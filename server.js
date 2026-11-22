@@ -166,6 +166,26 @@ async function initializeDatabase() {
 }
 
 app.disable("x-powered-by");
+app.use(function (req, res, next) {
+  var origin = req.headers.origin;
+  var allowedOrigins = new Set([
+    "https://helpinghandsofficial.github.io",
+    "https://helpinghands-hzc7.onrender.com",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+  ]);
+
+  if (allowedOrigins.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(express.json({ limit: "64kb" }));
 app.get(["/", "/index.html"], (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));

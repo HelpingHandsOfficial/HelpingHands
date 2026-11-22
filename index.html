@@ -864,51 +864,37 @@
   </footer>
 
   <script>
-    fetch("/api/posthog-config")
-      .then(function (response) { return response.json(); })
-      .then(function (config) {
-        var missingVariable = !config.projectToken ? "POSTHOG_PROJECT_TOKEN" : !config.host ? "POSTHOG_HOST" : null;
-        if (missingVariable) {
-          if (config.environment !== "production") {
-            throw new Error(missingVariable + " variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once " + missingVariable + " is configured");
+    (function () {
+      var posthogToken = "phc_uk5kWpQ4GCsKVjGTNUxzKU6vAju8Wia3aR6e3FX2eFwE";
+      var posthogHost = "https://eu.i.posthog.com";
+      var script = document.createElement("script");
+      script.async = true;
+      script.src = "https://eu-assets.i.posthog.com/static/array.js";
+      script.onload = function () {
+        window.posthog.init(posthogToken, {
+          api_host: posthogHost,
+          defaults: "2026-08-30",
+          capture_pageview: false,
+          capture_exceptions: {
+            capture_unhandled_errors: true,
+            capture_unhandled_rejections: true,
+            capture_console_errors: false
           }
-          return;
-        }
-
-        var script = document.createElement("script");
-        script.async = true;
-        script.src = "/vendor/posthog.js";
-        script.onload = function () {
-          window.posthog.init(config.projectToken, {
-            api_host: config.host,
-            defaults: "2026-08-30",
-            capture_pageview: false,
-            capture_exceptions: {
-              capture_unhandled_errors: true,
-              capture_unhandled_rejections: true,
-              capture_console_errors: false
-            }
-          });
-          window.posthog.capture("$pageview", {
-            $current_url: location.href,
-            $host: location.hostname,
-            $pathname: location.pathname
-          });
-          window.dispatchEvent(new Event("posthog:ready"));
-        };
-        document.head.appendChild(script);
-      })
-      .catch(function (error) {
-        if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-          setTimeout(function () { throw error; });
-        } else {
-          console.warn("PostHog initialization failed:", error);
-        }
-      });
+        });
+        window.posthog.capture("$pageview", {
+          $current_url: location.href,
+          $host: location.hostname,
+          $pathname: location.pathname
+        });
+        window.dispatchEvent(new Event("posthog:ready"));
+      };
+      document.head.appendChild(script);
+    })();
   </script>
 
   <script>
     (function () {
+      var apiBase = "https://helpinghands-hzc7.onrender.com";
       var sessionId = sessionStorage.getItem("hh_session");
       if (!sessionId) {
         sessionId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random();
@@ -928,7 +914,7 @@
           viewport: window.innerWidth + "x" + window.innerHeight,
           data: data || {}
         };
-        fetch("/api/events", {
+        fetch(apiBase + "/api/events", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -998,7 +984,7 @@
         var button = form.querySelector("button");
         button.disabled = true;
         try {
-          var response = await fetch("/api/leads", {
+          var response = await fetch(apiBase + "/api/leads", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
