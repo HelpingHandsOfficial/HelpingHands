@@ -22,7 +22,6 @@ loadEnvFile();
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
-const dashboardKey = process.env.DASHBOARD_KEY || "dev-change-me";
 const posthogProjectToken = process.env.POSTHOG_PROJECT_TOKEN;
 const posthogHost = process.env.POSTHOG_HOST;
 const databaseUrl = process.env.DATABASE_URL;
@@ -168,6 +167,12 @@ async function initializeDatabase() {
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "64kb" }));
+app.get(["/", "/index.html"], (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+app.get(["/LOGO.png", "/mesteri.png"], (req, res) => {
+  res.sendFile(path.join(__dirname, path.basename(req.path)));
+});
 app.get("/vendor/posthog.js", (req, res) => {
   res.sendFile(path.join(__dirname, "node_modules", "posthog-js", "dist", "array.full.js"));
 });
@@ -178,7 +183,6 @@ app.get("/api/posthog-config", (req, res) => {
     environment: process.env.NODE_ENV || "development"
   });
 });
-app.use(express.static(__dirname));
 
 function validEmail(email) {
   return typeof email === "string" && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -186,13 +190,6 @@ function validEmail(email) {
 
 function validSessionId(id) {
   return typeof id === "string" && id.length <= 80;
-}
-
-function requireDashboardKey(req, res, next) {
-  if (req.query.key !== dashboardKey && req.headers["x-dashboard-key"] !== dashboardKey) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  next();
 }
 
 function ipHash(req) {
@@ -262,80 +259,10 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
-app.get("/api/admin/stats", requireDashboardKey, async (req, res) => {
-  try {
-    const [leadCount, sessionCount, pageViews, submissions, clickEvents, scrollEvents, recentLeads, recentEvents] = await Promise.all([
-      dbGet("SELECT COUNT(*) AS count FROM leads"),
-      dbGet("SELECT COUNT(DISTINCT session_id) AS count FROM events WHERE session_id IS NOT NULL"),
-      dbGet("SELECT COUNT(*) AS count FROM events WHERE type = 'page_view'"),
-      dbGet("SELECT COUNT(*) AS count FROM events WHERE type = 'waitlist_submit'"),
-      dbAll("SELECT data FROM events WHERE type = 'click'"),
-      dbAll("SELECT session_id, data FROM events WHERE type = 'scroll_depth'"),
-      dbAll("SELECT email, created_at FROM leads ORDER BY id DESC LIMIT 100"),
-      dbAll("SELECT type, data, created_at FROM events ORDER BY id DESC LIMIT 100")
-    ]);
-
-  const clickCounts = {};
-  for (const event of clickEvents) {
-    let data = {};
-    try { data = typeof event.data === "string" ? JSON.parse(event.data) : event.data; } catch {}
-    const label = data.label || "(fără text)";
-    clickCounts[label] = (clickCounts[label] || 0) + 1;
-  }
-  const topClicks = Object.entries(clickCounts)
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 15);
-
-  const scrollBySession = {};
-  for (const event of scrollEvents) {
-    let data = {};
-    try { data = typeof event.data === "string" ? JSON.parse(event.data) : event.data; } catch {}
-    const percent = Number(data.percent || 0);
-    scrollBySession[event.session_id] = Math.max(scrollBySession[event.session_id] || 0, percent);
-  }
-  const scrollDepth = Object.entries(scrollBySession).map(([session_id, percent]) => ({ session_id, percent }));
-
-    res.json({
-      leadCount: Number(leadCount.count),
-      sessionCount: Number(sessionCount.count),
-      pageViews: Number(pageViews.count),
-      submissions: Number(submissions.count),
-      topClicks,
-      scrollDepth,
-      recentLeads,
-      recentEvents
-    });
-  } catch (error) {
-    console.error("Admin stats failed:", error);
-    res.status(500).json({ error: "Nu am putut încărca statisticile." });
-  }
-});
-
-app.get("/api/admin/leads.csv", requireDashboardKey, async (req, res) => {
-  try {
-    const rows = await dbAll("SELECT email, consent, created_at FROM leads ORDER BY id DESC");
-    const csv = ["email,consent,created_at"]
-      .concat(rows.map(row => `"${row.email}",${row.consent},"${row.created_at}"`))
-      .join("\n");
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", 'attachment; filename="helping-hands-leads.csv"');
-    res.send(csv);
-  } catch (error) {
-    console.error("Lead CSV export failed:", error);
-    res.status(500).send("Nu am putut exporta leadurile.");
-  }
-});
-
-app.get("/admin", (req, res) => {
-  res.sendFile(path.join(__dirname, "admin.html"));
-});
-
 initializeDatabase()
   .then(() => {
     app.listen(port, () => {
       console.log(`Helping Hands running at http://localhost:${port}`);
-      console.log(`Dashboard: http://localhost:${port}/admin`);
       emitPostHogLog("INFO", "Helping Hands server started", {
         event: "server_started",
         port,
