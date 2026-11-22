@@ -168,6 +168,9 @@ async function initializeDatabase() {
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "64kb" }));
+app.get("/vendor/posthog.js", (req, res) => {
+  res.sendFile(path.join(__dirname, "node_modules", "posthog-js", "dist", "array.full.js"));
+});
 app.get("/api/posthog-config", (req, res) => {
   res.json({
     projectToken: posthogProjectToken,
