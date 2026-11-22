@@ -12,6 +12,7 @@
     "@opentelemetry/sdk-logs": "^3.1.1",
     "better-sqlite3": "^12.4.1",
     "express": "^5.1.0",
+    "pg": "^8.16.3",
     "posthog-js": "^1.453.2"
   }
 }
