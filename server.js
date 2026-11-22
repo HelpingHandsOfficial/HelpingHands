@@ -3,6 +3,9 @@ const crypto = require("crypto");
 const fs = require("fs");
 const express = require("express");
 const Database = require("better-sqlite3");
+const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
+const { resourceFromAttributes } = require("@opentelemetry/resources");
+const { BatchLogRecordProcessor, LoggerProvider } = require("@opentelemetry/sdk-logs");
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
@@ -19,7 +22,61 @@ loadEnvFile();
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const dashboardKey = process.env.DASHBOARD_KEY || "dev-change-me";
+const posthogProjectToken = process.env.POSTHOG_PROJECT_TOKEN;
+const posthogHost = process.env.POSTHOG_HOST;
 const db = new Database(path.join(__dirname, "helping-hands.sqlite"));
+
+for (const variable of ["POSTHOG_PROJECT_TOKEN", "POSTHOG_HOST"]) {
+  if (!process.env[variable] && process.env.NODE_ENV !== "production") {
+    console.warn(`${variable} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once ${variable} is configured`);
+  }
+}
+
+let posthogLogProvider;
+let posthogLogger;
+
+if (posthogProjectToken && posthogHost) {
+  try {
+    const exporter = new OTLPLogExporter({
+      url: `${posthogHost.replace(/\/$/, "")}/i/v1/logs`,
+      headers: { Authorization: `Bearer ${posthogProjectToken}` }
+    });
+    posthogLogProvider = new LoggerProvider({
+      resource: resourceFromAttributes({
+        "service.name": "helping-hands-landing",
+        "deployment.environment": process.env.NODE_ENV || "development"
+      }),
+      processors: [new BatchLogRecordProcessor(exporter)]
+    });
+    posthogLogger = posthogLogProvider.getLogger("helping-hands-posthog-logs");
+  } catch {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("PostHog log exporter initialization failed; application log capture is disabled.");
+    }
+  }
+}
+
+function emitPostHogLog(severityText, body, attributes) {
+  try {
+    posthogLogger?.emit({ severityText, body, attributes });
+  } catch {
+    // Log export is best-effort and must not interrupt application work.
+  }
+}
+
+function flushPostHogLogs() {
+  if (!posthogLogProvider) return Promise.resolve();
+  return Promise.race([
+    posthogLogProvider.shutdown(),
+    new Promise(resolve => setTimeout(resolve, 1000))
+  ]).catch(() => {});
+}
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    void flushPostHogLogs().finally(() => process.exit(0));
+  });
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS leads (
@@ -48,6 +105,13 @@ db.exec(`
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "64kb" }));
+app.get("/api/posthog-config", (req, res) => {
+  res.json({
+    projectToken: posthogProjectToken,
+    host: posthogHost,
+    environment: process.env.NODE_ENV || "development"
+  });
+});
 app.use(express.static(__dirname));
 
 function validEmail(email) {
@@ -82,9 +146,20 @@ app.post("/api/leads", (req, res) => {
       ON CONFLICT(email) DO UPDATE SET consent = 1
     `);
     insert.run(email, validSessionId(req.body.sessionId) ? req.body.sessionId : null);
+    emitPostHogLog("INFO", "Waitlist lead persisted", {
+      event: "waitlist_lead_persisted",
+      route: "/api/leads",
+      consent_received: true,
+      status_code: 201
+    });
     res.status(201).json({ ok: true });
   } catch (error) {
     console.error("Lead save failed:", error);
+    emitPostHogLog("ERROR", "Waitlist lead persistence failed", {
+      event: "waitlist_lead_persistence_failed",
+      route: "/api/leads",
+      status_code: 500
+    });
     res.status(500).json({ error: "Nu am putut salva emailul." });
   }
 });
@@ -175,4 +250,9 @@ app.get("/admin", (req, res) => {
 app.listen(port, () => {
   console.log(`Helping Hands running at http://localhost:${port}`);
   console.log(`Dashboard: http://localhost:${port}/admin`);
+  emitPostHogLog("INFO", "Helping Hands server started", {
+    event: "server_started",
+    port,
+    environment: process.env.NODE_ENV || "development"
+  });
 });
