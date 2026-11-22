@@ -882,11 +882,17 @@
           window.posthog.init(config.projectToken, {
             api_host: config.host,
             defaults: "2026-08-30",
+            capture_pageview: false,
             capture_exceptions: {
               capture_unhandled_errors: true,
               capture_unhandled_rejections: true,
               capture_console_errors: false
             }
+          });
+          window.posthog.capture("$pageview", {
+            $current_url: location.href,
+            $host: location.hostname,
+            $pathname: location.pathname
           });
           window.dispatchEvent(new Event("posthog:ready"));
         };
