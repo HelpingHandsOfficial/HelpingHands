@@ -864,6 +864,44 @@
   </footer>
 
   <script>
+    fetch("/api/posthog-config")
+      .then(function (response) { return response.json(); })
+      .then(function (config) {
+        var missingVariable = !config.projectToken ? "POSTHOG_PROJECT_TOKEN" : !config.host ? "POSTHOG_HOST" : null;
+        if (missingVariable) {
+          if (config.environment !== "production") {
+            throw new Error(missingVariable + " variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once " + missingVariable + " is configured");
+          }
+          return;
+        }
+
+        var script = document.createElement("script");
+        script.async = true;
+        script.src = config.host.replace(".i.posthog.com", "-assets.i.posthog.com") + "/static/array.js";
+        script.onload = function () {
+          window.posthog.init(config.projectToken, {
+            api_host: config.host,
+            defaults: "2026-08-30",
+            capture_exceptions: {
+              capture_unhandled_errors: true,
+              capture_unhandled_rejections: true,
+              capture_console_errors: false
+            }
+          });
+          window.dispatchEvent(new Event("posthog:ready"));
+        };
+        document.head.appendChild(script);
+      })
+      .catch(function (error) {
+        if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+          setTimeout(function () { throw error; });
+        } else {
+          console.warn("PostHog initialization failed:", error);
+        }
+      });
+  </script>
+
+  <script>
     (function () {
       var sessionId = sessionStorage.getItem("hh_session");
       if (!sessionId) {
@@ -890,6 +928,17 @@
           body: JSON.stringify(payload),
           keepalive: true
         }).catch(function () {});
+      }
+
+      function capturePostHog(eventName, properties) {
+        if (window.posthog && typeof window.posthog.capture === "function") {
+          window.posthog.capture(eventName, properties);
+          return;
+        }
+
+        window.addEventListener("posthog:ready", function () {
+          window.posthog.capture(eventName, properties);
+        }, { once: true });
       }
 
       track("page_view", { title: document.title });
@@ -930,11 +979,13 @@
         if (!email.checkValidity()) {
           message.textContent = "Introdu o adresă de email validă.";
           track("waitlist_error", { reason: "invalid_email" });
+          capturePostHog("waitlist_error", { reason: "invalid_email" });
           return;
         }
         if (!consent.checked) {
           message.textContent = "Te rugăm să confirmi consimțământul.";
           track("waitlist_error", { reason: "missing_consent" });
+          capturePostHog("waitlist_error", { reason: "missing_consent" });
           return;
         }
 
@@ -954,10 +1005,12 @@
           if (!response.ok) throw new Error(result.error || "Nu am putut salva emailul.");
           message.textContent = "Mulțumim! Te vom anunța când lansăm.";
           track("waitlist_submit", { status: "success" });
+          capturePostHog("waitlist_submit", { status: "success" });
           form.reset();
         } catch (error) {
           message.textContent = "A apărut o eroare. Încearcă din nou.";
           track("waitlist_error", { reason: "server_error" });
+          capturePostHog("waitlist_error", { reason: "server_error" });
         } finally {
           button.disabled = false;
         }

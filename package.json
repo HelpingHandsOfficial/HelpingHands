@@ -7,7 +7,11 @@
     "dev": "node server.js"
   },
   "dependencies": {
+    "@opentelemetry/exporter-logs-otlp-http": "^0.301.2",
+    "@opentelemetry/resources": "^3.1.1",
+    "@opentelemetry/sdk-logs": "^3.1.1",
     "better-sqlite3": "^12.4.1",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "posthog-js": "^1.453.2"
   }
 }
