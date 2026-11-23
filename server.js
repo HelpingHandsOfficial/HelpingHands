@@ -256,7 +256,18 @@ app.post("/api/leads", async (req, res) => {
 });
 
 app.post("/api/events", async (req, res) => {
-  const allowedTypes = new Set(["page_view", "click", "scroll_depth", "session_end", "waitlist_submit", "waitlist_error"]);
+  const allowedTypes = new Set([
+    "page_view",
+    "click",
+    "scroll_depth",
+    "session_end",
+    "cta_click",
+    "waitlist_section_viewed",
+    "waitlist_form_started",
+    "waitlist_consent_checked",
+    "waitlist_submit",
+    "waitlist_error"
+  ]);
   if (!allowedTypes.has(req.body.type)) return res.status(400).json({ error: "Invalid event." });
 
   try {

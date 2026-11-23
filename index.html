@@ -716,7 +716,7 @@
         <h1>Cauți meșteri <span>de încredere?</span></h1>
         <p class="lead">Găsește cei mai buni lucrători din zona ta și alege persoana potrivită pentru problema ta - simplu, rapid și în siguranță.</p>
         <div class="hero-actions">
-          <a class="btn" href="#lista">Vreau acces anticipat <span>→</span></a>
+          <a class="btn" id="early-access-cta" href="#lista">Vreau acces anticipat <span>→</span></a>
           <a class="btn btn-secondary" href="#proces">Vezi cum funcționează</a>
         </div>
         <div class="proof">
@@ -963,6 +963,29 @@
 
       track("page_view", { title: document.title });
 
+      var waitlistSection = document.getElementById("lista");
+      var waitlistSectionViewed = false;
+      if ("IntersectionObserver" in window) {
+        var waitlistObserver = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting && !waitlistSectionViewed) {
+              waitlistSectionViewed = true;
+              track("waitlist_section_viewed", { source: "landing_page" });
+              capturePostHog("waitlist_section_viewed", { source: "landing_page" });
+            }
+          });
+        }, { threshold: 0.35 });
+        waitlistObserver.observe(waitlistSection);
+      }
+
+      document.querySelectorAll('a[href="#lista"]').forEach(function (cta) {
+        cta.addEventListener("click", function () {
+          var ctaLabel = cta.textContent.trim().replace(/\s+/g, " ").replace(/→$/, "").trim();
+          track("cta_click", { label: ctaLabel, target: "waitlist" });
+          capturePostHog("cta_click", { label: ctaLabel, target: "waitlist" });
+        });
+      });
+
       document.addEventListener("click", function (event) {
         var target = event.target.closest("a, button, input");
         if (!target) return;
@@ -993,6 +1016,20 @@
       var email = document.getElementById("email");
       var consent = document.getElementById("consent");
       var message = document.getElementById("waitlist-message");
+      var formStarted = false;
+
+      email.addEventListener("focus", function () {
+        if (formStarted) return;
+        formStarted = true;
+        track("waitlist_form_started", { field: "email" });
+        capturePostHog("waitlist_form_started", { field: "email" });
+      });
+
+      consent.addEventListener("change", function () {
+        if (!consent.checked) return;
+        track("waitlist_consent_checked", { consent: true });
+        capturePostHog("waitlist_consent_checked", { consent: true });
+      });
 
       form.addEventListener("submit", async function (event) {
         event.preventDefault();
