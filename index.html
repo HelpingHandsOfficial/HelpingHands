@@ -1064,6 +1064,7 @@
           track("waitlist_submit", { status: "success" });
           capturePostHog("waitlist_submit", { status: "success" });
           form.reset();
+          consent.checked = false;
         } catch (error) {
           message.textContent = "A apărut o eroare. Încearcă din nou.";
           track("waitlist_error", { reason: "server_error" });
